@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ocr-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recognition
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements/dev.txt
+      - run: python -m pytest -q
+
+  ocr-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t tabink-ocr:base recognition
+      - name: Smoke test
+        run: |
+          docker run -d --name ocr -p 127.0.0.1:8765:8765 tabink-ocr:base
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8765/health && exit 0; sleep 1; done
+          docker logs ocr; exit 1
+
+  android-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t tabink-android-build docker/android-build
+      # When android/ has a Gradle project, add:
+      # - run: docker run --rm -v "$PWD/android:/workspace" tabink-android-build ./gradlew assembleDebug

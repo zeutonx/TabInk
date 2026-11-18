@@ -1,0 +1,3 @@
+# Benchmark baseline. Pulls cnocr/cnstd/doclayout-yolo; heavy.
+-r base.in
+pix2text==1.1.7

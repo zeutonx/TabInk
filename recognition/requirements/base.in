@@ -1,0 +1,6 @@
+# Sidecar service only (no OCR engine). Engines live in separate files
+# because their pins conflict; see recognition/README.md.
+fastapi==0.163.2
+uvicorn==0.54.0
+python-multipart==0.0.34
+pillow

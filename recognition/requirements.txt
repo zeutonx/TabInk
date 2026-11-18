@@ -1,0 +1,3 @@
+# Default install = primary engine (TexTeller), fully pinned.
+# Other sets: requirements/{base,dev,pix2text,pix2tex}.txt. Use one venv per engine.
+-r requirements/texteller.txt

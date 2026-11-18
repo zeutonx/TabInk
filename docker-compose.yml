@@ -1,0 +1,41 @@
+# TabInk containers. The Windows host (pen injection, window capture, encoding) cannot run
+# in Docker: it must run natively in your Windows desktop session. See README.md.
+#
+#   docker compose up -d ocr                                   # OCR sidecar on 127.0.0.1:8765
+#   OCR_ENGINE=texteller docker compose up -d --build ocr      # with an engine
+#   docker compose --profile android run --rm android-build ./gradlew assembleDebug
+
+services:
+  ocr:
+    build:
+      context: ./recognition
+      args:
+        ENGINE: ${OCR_ENGINE:-base}
+    image: tabink-ocr:${OCR_ENGINE:-base}
+    # Loopback only. Never publish this port on 0.0.0.0 (docs/threat-model.md).
+    ports:
+      - "127.0.0.1:${OCR_PORT:-8765}:8765"
+    volumes:
+      - ocr-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  android-build:
+    profiles: ["android"]
+    build:
+      context: ./docker/android-build
+    image: tabink-android-build
+    working_dir: /workspace
+    volumes:
+      - ./android:/workspace
+      - gradle-cache:/home/builder/.gradle
+
+volumes:
+  ocr-models:
+  gradle-cache:

@@ -1,0 +1,13 @@
+.git/
+**/.venv/
+**/__pycache__/
+**/.gradle/
+**/build/
+**/.vs/
+**/bin/
+**/obj/
+**/out/
+recognition/models/
+*.log
+*.mp4
+*.h264

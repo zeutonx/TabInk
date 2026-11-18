@@ -1,0 +1,3 @@
+# Primary engine (architecture.md §14). Pins transformers==4.47 and pulls ray[serve] + streamlit.
+-r base.in
+texteller==1.0.2
