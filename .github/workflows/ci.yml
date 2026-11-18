@@ -33,10 +33,18 @@ jobs:
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:8765/health && exit 0; sleep 1; done
           docker logs ocr; exit 1
 
-  android-image:
+  android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t tabink-android-build docker/android-build
-      # When android/ has a Gradle project, add:
-      # - run: docker run --rm -v "$PWD/android:/workspace" tabink-android-build ./gradlew assembleDebug
+      # Runner checkout is owned by uid 1001; the build user must match it.
+      - run: docker build --build-arg BUILDER_UID=$(id -u) -t tabink-android-build docker/android-build
+      - name: Unit tests and debug APK
+        run: >
+          docker run --rm -v "$PWD/android:/workspace" tabink-android-build
+          ./gradlew --console=plain :penlogger:testDebugUnitTest :penlogger:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: penlogger-debug-apk
+          path: android/penlogger/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -10,7 +10,8 @@ Source: [architecture.md §17](architecture.md#17-project-organization-and-roadm
 - [ ] **Decision:** does an existing tool already cover the real use case? If yes, stop here.
 
 ### P0.2 Android pen-sample logger (`android/`)
-- [ ] Minimal Kotlin app with one custom `View`: log `onTouchEvent`/`onHoverEvent`, tool type, historical samples (with timestamps), pressure, `AXIS_DISTANCE`, button state
+- [x] Minimal Kotlin app with one custom `View`: log `onTouchEvent`/`onHoverEvent`, tool type, historical samples (with timestamps), pressure, `AXIS_DISTANCE`, button state ([`android/penlogger`](../android/penlogger/README.md))
+- [ ] Run the [test protocol](../android/penlogger/README.md#test-protocol-20-min) on the tablet and fill in the results table
 - [ ] Measure the real S10 FE sample rate, pressure distribution, hover distance and side-button delivery. Don't assume 240 Hz.
 - [ ] Check whether Samsung Air Command swallows side-button events
 

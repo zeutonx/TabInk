@@ -74,3 +74,6 @@ recordings/
 *.p12
 *.pfx
 .env
+
+# P0 pen-logger CSVs pulled from the tablet (raw handwriting data)
+p0-logs/

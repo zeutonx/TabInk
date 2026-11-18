@@ -30,8 +30,16 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
 RUN yes | sdkmanager --licenses > /dev/null \
     && sdkmanager --install "platform-tools" "platforms;${ANDROID_PLATFORM}" "build-tools;${BUILD_TOOLS}" > /dev/null
 
-RUN useradd --create-home --uid 10001 builder \
-    && chown -R builder:builder ${ANDROID_HOME}
+# GRADLE_USER_HOME must exist and be owned by builder *in the image*, so a named volume
+# mounted there inherits that ownership instead of being root-owned.
+# BUILDER_UID should match the owner of the mounted source tree (1000 for the default
+# WSL user on /mnt/c; GitHub-hosted runners use 1001). The base image's own uid-1000
+# "ubuntu" user is removed so that uid can be reused.
+ARG BUILDER_UID=1000
+RUN (userdel -r ubuntu 2>/dev/null || true) \
+    && useradd --create-home --uid ${BUILDER_UID} builder \
+    && mkdir -p ${GRADLE_USER_HOME} \
+    && chown -R builder:builder ${ANDROID_HOME} /home/builder
 USER builder
 WORKDIR /workspace
 
