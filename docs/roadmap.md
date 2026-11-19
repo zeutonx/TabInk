@@ -16,9 +16,10 @@ Source: [architecture.md §17](architecture.md#17-project-organization-and-roadm
 - [ ] Check whether Samsung Air Command swallows side-button events
 
 ### P0.3 Windows synthetic-pen diagnostic (`windows/tests/pen-diagnostics/`)
-- [ ] `CreateSyntheticPointerDevice(PT_PEN)` + `InjectSyntheticPointerInput`: draw a pressure ramp, eraser strokes, tiny glyphs, hover, side button
-- [ ] Try it in OneNote, Xournal++ and Edge PDF
-- [ ] Optional: replay a P0.2 log through the injector, which joins the two spikes without any transport
+- [x] `CreateSyntheticPointerDevice(PT_PEN)` + `InjectSyntheticPointerInput`: draw a pressure ramp, eraser strokes, tiny glyphs, hover, side button ([`pen_diag`](../windows/tests/pen-diagnostics/README.md))
+- [x] Automated self-test against our own window: **PASS**. 1914/1914 contact frames exact, pressure 32..1024, hover/barrel/eraser delivered, injection→window p95 0.86 ms
+- [ ] Try it in OneNote, Xournal++ and Edge PDF (`pen_diag patterns`, needs you at the keyboard)
+- [x] Replay a P0.2 log through the injector (`pen_diag replay`). Built; waiting on a tablet log.
 
 **P0 gate:** at least two target apps accept meaningful pen input (pressure, clean down/up), with no unexplained input hooks.
 
@@ -50,3 +51,4 @@ AOA USB without developer mode, WebRTC/QUIC, browser extension, WinTab/virtual H
 | D4 | License | MIT or Apache-2.0 | Choose only after auditing dependencies (architecture.md §19). No LICENSE file until then. |
 | D5 | Windows build system | CMake + vcpkg/NuGet, or an MSBuild `.sln` | |
 | D6 | GPU for capture + encode | NVIDIA NVENC or Intel Quick Sync | This laptop is hybrid (Intel UHD + RTX 5060). The WGC texture and MF encoder must share a D3D11 adapter. |
+| D7 | Multi-monitor pen reach | (a) Only target windows on the pen-mapped display; tell the user to move the window. (b) Ask the user to remap pen input in Tablet PC Settings. (c) Virtual HID digitizer (kernel driver, v2+). | **P0.3 finding:** the synthetic pen is bound to one display (the built-in panel here) and uses its local pixels. Off-display points are silently ignored. This changes architecture.md §5/§6 "virtual-desktop pixels". Leaning (a) for MVP, measured at runtime as `pen_diag` does. Check whether a PC without a built-in digitizer maps to the primary display. |

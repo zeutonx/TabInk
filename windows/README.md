@@ -14,4 +14,19 @@ Runs as a normal desktop user-session process, **not** a Session 0 service. Desi
 
 No kernel driver in MVP or v1. WinTab is unsupported.
 
-**P0:** start with `tests/pen-diagnostics/` (see [roadmap.md](../docs/roadmap.md#p03-windows-synthetic-pen-diagnostic-windowstestspen-diagnostics)).
+## Status
+
+| Path | State |
+|---|---|
+| `core/injection/pen_injector.*` | **Started.** `PT_PEN` injector with a strict hover/down/move/up/cancel state machine, automatic eraser flip, never-stuck-down teardown. Unit-tested. |
+| `tests/pen-diagnostics/` | **P0.3 tool** `pen_diag`: self-test (PASS), patterns and replay into real apps. See its [README](tests/pen-diagnostics/README.md) for results and findings. |
+| `tests/unit/` | Unit tests (minimal harness; framework pending D5) |
+| everything else | Not started (MVP) |
+
+Build and test from the repo root:
+
+```bash
+windows\build.cmd test
+```
+
+**Key P0.3 finding:** the synthetic pen reaches only one display (the built-in panel on this laptop) and takes that display's local pixels. See roadmap decision D7.

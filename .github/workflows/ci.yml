@@ -33,6 +33,14 @@ jobs:
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:8765/health && exit 0; sleep 1; done
           docker logs ocr; exit 1
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Unit tests only: pen_diag self-test needs an interactive desktop.
+      - run: windows\build.cmd test
+        shell: cmd
+
   android:
     runs-on: ubuntu-latest
     steps:
