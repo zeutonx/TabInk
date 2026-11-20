@@ -2,6 +2,7 @@
 //
 //   pen_diag info                         environment + can we create a synthetic pen?
 //   pen_diag self-test [--rate HZ]        inject into our own window, verify what Windows delivers
+//   pen_diag soak [--minutes 30]          go/no-go endurance: repeat the self-test patterns, check every round
 //   pen_diag patterns  [--delay S] [--rate HZ] [--only a,b,...]
 //                                         draw test patterns into the app you switch to
 //   pen_diag replay <pen.csv> [--delay S] [--speed X]
@@ -270,6 +271,8 @@ std::unique_ptr<PenInjector> MakeInjector(injection::FrameObserver obs = nullptr
 
 // ---------------------------------------------------------------------------------------
 
+void PrintPointerDevices();
+
 int CmdInfo() {
     OSVERSIONINFOEXW v{sizeof(v)};
     using RtlGetVersionFn = LONG(WINAPI*)(OSVERSIONINFOEXW*);
@@ -353,7 +356,37 @@ int CmdInfo() {
     if (haveUi) std::printf(", UI restrictions 0x%lx%s\n", ui.UIRestrictionsClass, ui.UIRestrictionsClass ? " (input may be blocked)" : "");
     auto inj = MakeInjector();
     std::printf("Synthetic PT_PEN device: %s\n", inj ? "created OK" : "FAILED");
+    PrintPointerDevices();
     return inj ? 0 : 1;
+}
+
+void PrintPointerDevices() {
+    // Every pointer device and the display area Windows maps it to (the synthetic pen included).
+    // A missing monitor or unexpected display rect explains "inject succeeds, cursor doesn't follow".
+    UINT32 nDev = 0;
+    GetPointerDevices(&nDev, nullptr);
+    std::vector<POINTER_DEVICE_INFO> devs(nDev);
+    if (nDev && GetPointerDevices(&nDev, devs.data())) {
+        std::printf("Pointer devices (%u):\n", nDev);
+        for (const auto& d : devs) {
+            RECT dev{}, disp{};
+            const bool rects = GetPointerDeviceRects(d.device, &dev, &disp) != FALSE;
+            MONITORINFOEXA mi{};
+            mi.cbSize = sizeof(mi);
+            const bool haveMon = d.monitor && GetMonitorInfoA(d.monitor, &mi);
+            const char* type = d.pointerDeviceType == POINTER_DEVICE_TYPE_INTEGRATED_PEN ? "integrated pen"
+                             : d.pointerDeviceType == POINTER_DEVICE_TYPE_EXTERNAL_PEN ? "external pen"
+                             : d.pointerDeviceType == POINTER_DEVICE_TYPE_TOUCH ? "touch"
+                             : d.pointerDeviceType == POINTER_DEVICE_TYPE_TOUCH_PAD ? "touchpad" : "other";
+            std::printf("  %-14s %-40ls monitor %s", type, d.productString, haveMon ? mi.szDevice : "(none)");
+            if (rects) {
+                std::printf(", device (%ld,%ld)-(%ld,%ld) -> display (%ld,%ld)-(%ld,%ld)%s", dev.left, dev.top, dev.right,
+                            dev.bottom, disp.left, disp.top, disp.right, disp.bottom,
+                            (disp.right <= disp.left || disp.bottom <= disp.top) ? "  <-- EMPTY display rect" : "");
+            }
+            std::printf("\n");
+        }
+    }
 }
 
 bool RequireReachable(const PenSpace& space, const RECT& client) {
@@ -370,6 +403,10 @@ PenSpace Calibrate(PenInjector& inj) {
     PenSpace s = CalibratePenSpace(inj);
     if (!s.valid) {
         std::printf("Pen mapping calibration FAILED: %s\n", s.error.c_str());
+        std::printf("Windows' pointer-device mapping right now (the synthetic pen is usually the last pen listed):\n");
+        PrintPointerDevices();
+        std::printf("If the synthetic pen shows 'monitor (none)', Windows has no display for it: run Control Panel >\n"
+                    "Tablet PC Settings > Setup > Pen input, and pick the screen to draw on. Nothing was drawn.\n");
         return s;
     }
     std::printf("Pen mapping: synthetic pen reaches %s (%ld,%ld %ldx%ld); device (0,0) = screen (%.0f,%.0f), scale %.3f x %.3f\n",
@@ -470,6 +507,126 @@ int CmdSelfTest(const std::map<std::string, std::string>& flags) {
     }
     target.Stop();
     return all ? 0 : 2;
+}
+
+// Go/no-go endurance run (roadmap P0): draws small math notation into our own window for
+// --minutes and checks every round for loss, offsets and broken pen-up. The pen moves the
+// cursor on the pen's display the whole time, so run it while you are away from the PC.
+int CmdSoak(const std::map<std::string, std::string>& flags) {
+    const double minutes = flags.count("minutes") ? std::max(0.1, std::atof(flags.at("minutes").c_str())) : 30.0;
+    const long maxRounds = flags.count("rounds") ? std::max(1L, std::atol(flags.at("rounds").c_str())) : 0;
+    const uint32_t sampleUs = RateToUs(flags);
+
+    std::vector<Frame> sent;
+    PenSpace space;
+    auto inj = MakeInjector([&sent, &space](const POINTER_TYPE_INFO& info, bool ok) {
+        if (!ok || !space.valid) return;
+        Frame f;
+        f.pointerFlags = info.penInfo.pointerInfo.pointerFlags;
+        f.penFlags = info.penInfo.penFlags;
+        f.pressure = info.penInfo.pressure;
+        const POINT s = space.ToScreen(info.penInfo.pointerInfo.ptPixelLocation);
+        f.x = s.x;
+        f.y = s.y;
+        f.qpc = Qpc();
+        sent.push_back(f);
+    });
+    if (!inj) return 1;
+    space = Calibrate(*inj);
+    if (!space.valid) return 1;
+
+    DiagTarget target;
+    if (!target.Start(1200, 800, &space.monitor)) { std::printf("Could not create the target window.\n"); return 1; }
+    Sleep(300);
+    const RECT rc = target.clientScreenRect();
+    if (!space.Reaches(rc)) { std::printf("Target window is not fully on the pen's display.\n"); return 1; }
+    target.TakeReceived();
+    sent.clear();
+
+    FILE* log = nullptr;
+    if (flags.count("log")) {
+        // Counts only: no coordinates, no screen content.
+        if (fopen_s(&log, flags.at("log").c_str(), "w") != 0) log = nullptr;
+        if (log) std::fprintf(log, "round,elapsed_s,ok,contact_sent,contact_received,position_mismatches,pressure_mismatches,counts_match,balanced,inject_failures\n");
+        else std::printf("Cannot write %s; continuing without a log.\n", flags.at("log").c_str());
+    }
+
+    if (maxRounds) std::printf("Soak: %ld rounds", maxRounds);
+    else std::printf("Soak: %g min", minutes);
+    std::printf(" at %.0f Hz into our own window on %s. Esc stops.\n", 1e6 / sampleUs, MonitorName(rc).c_str());
+    const std::vector<std::string> sections = {"ramp", "taps", "tiny", "glyphs", "barrel", "rapid", "eraser"};
+    SoakTotals totals;
+    std::vector<double> lat;
+    Guard guard{target.hwnd(), /*requireForeground=*/false, {}};
+    const int64_t t0 = Qpc();
+    bool aborted = false;
+    for (long round = 0;; ++round) {
+        const double elapsedS = QpcToMs(Qpc() - t0) / 1000.0;
+        if (maxRounds ? round >= maxRounds : elapsedS >= minutes * 60) break;
+
+        // Shift every round so strokes don't land on identical pixels.
+        const long jx = (round * 7) % 24, jy = (round * 5) % 16;
+        const Region region{rc.left + 20 + jx, rc.top + 20 + jy, (rc.right - rc.left) - 64, (rc.bottom - rc.top) - 56};
+        const auto steps = BuildPatterns(region, sampleUs, sections);
+        const uint64_t failedBefore = inj->stats().framesFailed;
+        sent.clear();
+        const int64_t r0 = Qpc();
+        // Run() prints section names; keep the soak output to one line per round.
+        Pacer pacer;
+        size_t sinceCheck = 0;
+        for (const PenStep& s : steps) {
+            pacer.WaitUs(s.delayUs);
+            if (s.kind == CmdKind::Down || s.kind == CmdKind::Hover || ++sinceCheck >= 16) {
+                sinceCheck = 0;
+                if (!guard.Ok(POINT{s.x, s.y})) { aborted = true; break; }
+            }
+            Execute(*inj, s, space);
+        }
+        inj->EndAll();
+        Sleep(300);  // let the window drain
+        const auto received = target.TakeReceived();
+        if (aborted) {
+            std::printf("ABORTED in round %ld: %s. Pen lifted and out of range. Partial round not counted.\n", round + 1,
+                        guard.reason.c_str());
+            break;
+        }
+        for (const Frame& f : received) if (f.sysQpc > 0 && f.qpc >= f.sysQpc) lat.push_back(QpcToMs(f.qpc - f.sysQpc));
+        const SoakRound r = totals.AddRound(sent, received, inj->stats().framesFailed - failedBefore);
+        const double now = QpcToMs(Qpc() - t0) / 1000.0;
+        std::printf("  round %4ld  %02d:%02d  contact %llu/%llu  pos %llu  pres %llu  %s%s%s  (%.1f s)\n", round + 1,
+                    static_cast<int>(now) / 60, static_cast<int>(now) % 60, r.contactCompared, r.contactSent,
+                    r.positionMismatches, r.pressureMismatches, r.ok ? "ok" : "FAIL",
+                    r.countsMatch ? "" : " counts-differ", r.balanced ? "" : " down/up-unbalanced", QpcToMs(Qpc() - r0) / 1000.0);
+        if (log) {
+            std::fprintf(log, "%ld,%.1f,%d,%llu,%llu,%llu,%llu,%d,%d,%llu\n", round + 1, now, r.ok ? 1 : 0, r.contactSent,
+                         r.contactCompared, r.positionMismatches, r.pressureMismatches, r.countsMatch ? 1 : 0,
+                         r.balanced ? 1 : 0, r.injectFailures);
+            std::fflush(log);
+        }
+    }
+    if (log) std::fclose(log);
+    const double total = QpcToMs(Qpc() - t0) / 1000.0;
+
+    std::printf("\nSOAK SUMMARY (%.1f min, %llu rounds)\n", total / 60, totals.rounds);
+    PrintInjectorStats(*inj);
+    std::printf("  rounds failed %llu (count mismatch %llu, down/up unbalanced %llu)\n", totals.roundsFailed,
+                totals.countMismatchRounds, totals.unbalancedRounds);
+    std::printf("  contact frames %llu sent, %llu compared; position mismatches %llu (max dx %ld, dy %ld), pressure mismatches %llu\n",
+                totals.contactSent, totals.contactCompared, totals.positionMismatches, totals.maxDx, totals.maxDy,
+                totals.pressureMismatches);
+    std::printf("  strokes received: down %llu, up %llu, cancel %llu\n", totals.downs, totals.ups, totals.cancels);
+    if (!lat.empty()) {
+        std::sort(lat.begin(), lat.end());
+        auto pct = [&](double p) { return lat[std::min(lat.size() - 1, static_cast<size_t>(p / 100.0 * lat.size()))]; };
+        std::printf("  injection -> window latency: p50 %.2f ms, p95 %.2f ms, p99 %.2f ms, max %.2f ms (n=%zu)\n", pct(50),
+                    pct(95), pct(99), lat.back(), lat.size());
+    }
+    const bool fullLength = maxRounds ? totals.rounds >= static_cast<uint64_t>(maxRounds) : total >= minutes * 60 - 1;
+    const bool pass = !aborted && fullLength && totals.ok() && inj->stats().violations == 0;
+    std::printf("RESULT: %s%s\n", pass ? "PASS" : aborted ? "INCOMPLETE" : "FAIL",
+                (!aborted && !maxRounds && minutes < 30) ? " (shorter than the 30-minute go/no-go run)" : "");
+    target.Stop();
+    return pass ? 0 : 2;
 }
 
 int CmdPatterns(const std::map<std::string, std::string>& flags) {
@@ -579,7 +736,7 @@ int CmdProbe() {
         Sleep(60);
         POINT p{};
         GetCursorPos(&p);
-        std::printf("  %ld->%ld", x, p.x);
+        std::printf("  %ld->(%ld,%ld)", x, p.x, p.y);
     }
     inj->EndAll();
     std::printf("\n");
@@ -608,6 +765,7 @@ void Usage() {
         "TabInk pen diagnostics (P0.3)\n\n"
         "  pen_diag info\n"
         "  pen_diag self-test [--rate HZ] [--keep]\n"
+        "  pen_diag soak      [--minutes 30 | --rounds N] [--rate HZ] [--log soak.csv]\n"
         "  pen_diag patterns  [--delay S] [--rate HZ] [--only ramp,taps,tiny,glyphs,hover,barrel,rapid,eraser]\n"
         "  pen_diag replay <pen.csv> [--delay S] [--speed X]\n\n"
         "Esc or Ctrl+C stops at any time; the pen is always lifted.\n");
@@ -625,6 +783,7 @@ int main(int argc, char** argv) {
     if (cmd == "info") return CmdInfo();
     if (cmd == "probe") return CmdProbe();
     if (cmd == "self-test") return CmdSelfTest(flags);
+    if (cmd == "soak") return CmdSoak(flags);
     if (cmd == "patterns") return CmdPatterns(flags);
     if (cmd == "replay") {
         if (pos.empty()) { Usage(); return 1; }

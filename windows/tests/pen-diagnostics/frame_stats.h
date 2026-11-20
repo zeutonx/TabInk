@@ -46,4 +46,26 @@ struct Comparison {
 // Compares contact frames (Down/Move/Up/Cancel) in order, plus all category counts.
 Comparison Compare(const std::vector<Frame>& sent, const std::vector<Frame>& received);
 
+// Go/no-go endurance tally (roadmap: "30 consecutive minutes of small math notation without
+// systematic loss, offsets, or broken pen-up"). One round = one pattern pass, compared on its own.
+struct SoakRound {
+    bool ok = false;           // counts match, every down has an up, contact exact, nothing failed
+    bool countsMatch = false;
+    bool balanced = false;     // received down == up + cancel
+    uint64_t contactSent = 0, contactCompared = 0, positionMismatches = 0, pressureMismatches = 0;
+    uint64_t injectFailures = 0;
+};
+
+struct SoakTotals {
+    uint64_t rounds = 0, roundsFailed = 0;
+    uint64_t countMismatchRounds = 0, unbalancedRounds = 0;
+    uint64_t contactSent = 0, contactCompared = 0, positionMismatches = 0, pressureMismatches = 0;
+    uint64_t downs = 0, ups = 0, cancels = 0, injectFailures = 0;
+    long maxDx = 0, maxDy = 0;
+
+    // `roundInjectFailures` is the injector's failed-frame count during this round.
+    SoakRound AddRound(const std::vector<Frame>& sent, const std::vector<Frame>& received, uint64_t roundInjectFailures);
+    bool ok() const { return rounds > 0 && roundsFailed == 0; }
+};
+
 }  // namespace tabink::diag

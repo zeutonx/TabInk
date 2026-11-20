@@ -284,6 +284,27 @@ TEST(CompareDetectsMismatch) {
     CHECK(!Compare(a, b).countsMatch);
 }
 
+TEST(SoakTalliesRounds) {
+    const std::vector<Frame> a = {{kDown, 0, 500, 1, 1}, {kMove, 0, 600, 2, 2}, {kUp, 0, 0, 2, 2}};
+    SoakTotals t;
+    CHECK(!t.ok());  // no rounds yet
+    CHECK(t.AddRound(a, a, 0).ok);
+    CHECK(t.ok() && t.contactSent == 3 && t.contactCompared == 3 && t.downs == 1 && t.ups == 1);
+
+    std::vector<Frame> lostUp = a;
+    lostUp.pop_back();
+    const SoakRound r = t.AddRound(a, lostUp, 0);
+    CHECK(!r.ok && !r.balanced && !r.countsMatch);
+
+    std::vector<Frame> offset = a;
+    offset[1].y = 5;
+    CHECK(!t.AddRound(a, offset, 0).ok);
+    CHECK(!t.AddRound(a, a, 1).ok);  // a failed injection fails the round even if delivery looks right
+    CHECK(!t.AddRound({}, {}, 0).ok);  // an empty round proves nothing
+    CHECK(t.rounds == 5 && t.roundsFailed == 4 && t.unbalancedRounds == 1 && t.positionMismatches == 1 && t.maxDy == 3);
+    CHECK(!t.ok());
+}
+
 TEST(PatternsAreBalancedAndInsideRegion) {
     const Region r{-500, 100, 1000, 700};
     const auto steps = BuildPatterns(r, 4167, {});
@@ -342,6 +363,7 @@ int main() {
     RUN(PressureConversion);
     RUN(ClassifyFrames);
     RUN(CompareDetectsMismatch);
+    RUN(SoakTalliesRounds);
     RUN(PatternsAreBalancedAndInsideRegion);
     RUN(PatternsOnlyFilter);
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

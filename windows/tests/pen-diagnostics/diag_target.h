@@ -26,6 +26,9 @@ public:
     RECT clientScreenRect() const;  // physical screen px
 
     std::vector<Frame> Received() const;
+    // Returns everything received so far and starts a fresh round (also wipes the drawing).
+    // Call only while the pen is out of range, so no history spans the boundary.
+    std::vector<Frame> TakeReceived();
     uint64_t messages() const { return messages_; }
     uint64_t historyEntries() const { return historyEntries_; }
     bool framesHaveIds() const { return sawNonZeroFrameId_; }

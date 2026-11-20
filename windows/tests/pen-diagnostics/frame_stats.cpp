@@ -102,4 +102,35 @@ Comparison Compare(const std::vector<Frame>& sent, const std::vector<Frame>& rec
     return r;
 }
 
+SoakRound SoakTotals::AddRound(const std::vector<Frame>& sent, const std::vector<Frame>& received, uint64_t roundInjectFailures) {
+    const Comparison c = Compare(sent, received);
+    const FrameCounts s = Count(sent), v = Count(received);
+    SoakRound r;
+    r.countsMatch = c.countsMatch;
+    r.balanced = v.down == v.up + v.cancel;
+    r.contactSent = s.down + s.move + s.up + s.cancel;
+    r.contactCompared = c.contactCompared;
+    r.positionMismatches = c.positionMismatches;
+    r.pressureMismatches = c.pressureMismatches;
+    r.injectFailures = roundInjectFailures;
+    r.ok = r.countsMatch && r.balanced && r.contactSent > 0 && r.contactCompared == r.contactSent &&
+           r.positionMismatches == 0 && r.pressureMismatches == 0 && roundInjectFailures == 0;
+
+    ++rounds;
+    if (!r.ok) ++roundsFailed;
+    if (!r.countsMatch) ++countMismatchRounds;
+    if (!r.balanced) ++unbalancedRounds;
+    contactSent += r.contactSent;
+    contactCompared += r.contactCompared;
+    positionMismatches += r.positionMismatches;
+    pressureMismatches += r.pressureMismatches;
+    downs += v.down;
+    ups += v.up;
+    cancels += v.cancel;
+    injectFailures += roundInjectFailures;
+    maxDx = std::max(maxDx, c.maxDx);
+    maxDy = std::max(maxDy, c.maxDy);
+    return r;
+}
+
 }  // namespace tabink::diag

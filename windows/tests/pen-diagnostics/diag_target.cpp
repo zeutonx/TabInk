@@ -42,6 +42,17 @@ std::vector<Frame> DiagTarget::Received() const {
     return received_;
 }
 
+std::vector<Frame> DiagTarget::TakeReceived() {
+    std::vector<Frame> out;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        out.swap(received_);
+        seenFrameIds_.clear();
+    }
+    if (HWND h = hwnd_.load()) InvalidateRect(h, nullptr, TRUE);
+    return out;
+}
+
 void DiagTarget::Run(int clientW, int clientH, POINT monitorCenter) {
     HINSTANCE inst = GetModuleHandleW(nullptr);
     WNDCLASSEXW wc{sizeof(wc)};
