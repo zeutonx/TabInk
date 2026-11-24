@@ -38,9 +38,11 @@ CER counts Unicode code points after NFC, without ZWJ/ZWNJ, over all scored prom
 
 The report also splits scores by words, lines and numbers, and errors by character type as `edits/expected`. An inserted character counts under its own type, so that ratio can exceed 100%. Where several alignments are equally short, the split is one of them; the overall CER is not affected.
 
+Each first attempt is also recognised with two other settings on the same ink: `FITTED_AREA` (writing area as tall as your ink) and `NO_CONTEXT` (no writing area at all). These `alt` lines are exploratory and never change the gate. If one clearly wins, confirm it on a fresh run, because picking the best of three on the same data flatters it.
+
 | Mostly errors in | Try next |
 |---|---|
-| `matra`, `sign` | Larger marks, or a writing-area height closer to your line height |
+| `matra`, `sign` | Larger marks, or check whether `alt FITTED_AREA` does better |
 | `halant`, `consonant` | Check conjuncts; compare `ne-NP` with `ne` |
 | `space` | Write word by word, with pre-context |
 | `digit` only | Number input may need its own mode |

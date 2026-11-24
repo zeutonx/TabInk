@@ -55,6 +55,25 @@ class TestRunTest {
         assertEquals(r.encode(), TestRun.decode(r.encode())!!.encode())
     }
 
+    @Test fun variantsArePairedButNeverAffectTheGate() {
+        val r = TestRun()
+        while (!r.done) {
+            val right = listOf(Prompts.all[r.index])
+            r.score(right, mapOf(Variant.FITTED_AREA to emptyList(), Variant.NO_CONTEXT to right))
+            r.next()
+        }
+        assertEquals(true, r.gatePassed())
+        assertTrue(r.report().contains("alt FITTED_AREA  scored 100  CER 100.0%"))
+        assertTrue(r.report().contains("alt NO_CONTEXT  scored 100  CER 0.0%"))
+        assertEquals(r.report(), TestRun.decode(r.encode())!!.report())
+    }
+
+    @Test fun runSavedBeforeVariantsStillLoads() {
+        val r = TestRun().apply { score(listOf(Prompts.all[0])); next() }
+        val old = r.encode().split(',').dropLast(Variant.entries.size * Accuracy.COUNTS).joinToString(",")
+        assertEquals(r.report(), TestRun.decode(old)!!.report())
+    }
+
     @Test fun badStateIsRejected() {
         val good = TestRun().apply { score(listOf("x")); next() }.encode()
         assertNull(TestRun.decode(null))

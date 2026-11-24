@@ -33,6 +33,12 @@ class InkView(context: Context) : View(context) {
         invalidate(); onInkChanged?.invoke()
     }
 
+    /** Height of the ink's bounding box, at least 1 px (a lone dot has none). */
+    fun inkHeight(): Float {
+        val ys = strokes.flatMap { s -> s.points.map { it.y } }
+        return if (ys.isEmpty()) 1f else maxOf(1f, ys.max() - ys.min())
+    }
+
     fun buildInk(): Ink {
         val ink = Ink.builder()
         for (s in strokes) {

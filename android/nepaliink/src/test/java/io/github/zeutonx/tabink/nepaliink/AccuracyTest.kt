@@ -34,7 +34,7 @@ class AccuracyTest {
 
     @Test fun normalizesJoinersAndSpaces() {
         assertEquals("क्ष घर", Accuracy.normalize(" क्\u200dष   घर\n"))
-        assertEquals(Accuracy.normalize("क़"), Accuracy.normalize("क़"))
+        assertEquals("\u0915\u093c", Accuracy.normalize("\u0958"))
     }
 
     @Test fun emptyHasNoRate() {

@@ -20,6 +20,9 @@ enum class CharClass {
     }
 }
 
+/** Alternatives scored on the same ink as the gate setting. Exploratory: they never affect the gate. */
+enum class Variant { FITTED_AREA, NO_CONTEXT }
+
 /**
  * Progress through the prompt set. Holds and stores counts only, never ink or recognised text.
  * Pure JVM.
@@ -34,15 +37,18 @@ class TestRun {
     private val expected = IntArray(CharClass.entries.size)
     private val byCategory = Prompts.Category.entries.associateWith { Accuracy() }
 
+    private val byVariant = Variant.entries.associateWith { Accuracy() }
+
     val done get() = index >= Prompts.all.size
     val total get() = Accuracy().also { t -> byCategory.values.forEach(t::merge) }
 
     /** Counts the first attempt at the current prompt; later attempts are ignored. */
-    fun score(candidates: List<String>) {
+    fun score(candidates: List<String>, variants: Map<Variant, List<String>> = emptyMap()) {
         if (done || scored) return
         scored = true
         val want = Prompts.all[index]
         byCategory.getValue(Prompts.categoryOf(index)).add(want, candidates)
+        variants.forEach { (v, c) -> byVariant.getValue(v).add(want, c) }
         val w = Accuracy.codePoints(Accuracy.normalize(want))
         val g = Accuracy.codePoints(Accuracy.normalize(candidates.firstOrNull().orEmpty()))
         w.forEach { expected[CharClass.of(it).ordinal]++ }
@@ -72,6 +78,7 @@ class TestRun {
         appendLine("set v${Prompts.VERSION}  gate (CER < ${(GATE_CER * 100).toInt()}%, none skipped): $verdict  skipped $skipped")
         appendLine("ALL      ${total.summary()}")
         byCategory.forEach { (c, a) -> appendLine("${c.name.padEnd(8)} ${a.summary()}") }
+        byVariant.forEach { (v, a) -> appendLine("alt ${v.name}  ${a.summary()}") }
         append("ERRORS   ")
         append(CharClass.entries.filter { errors[it.ordinal] + expected[it.ordinal] > 0 }
             .joinToString("  ") { "${it.name.lowercase(Locale.ROOT)} ${errors[it.ordinal]}/${expected[it.ordinal]}" }
@@ -79,7 +86,8 @@ class TestRun {
     }
 
     fun encode(): String = (listOf(Prompts.VERSION, index, skipped, if (scored) 1 else 0) +
-        errors.toList() + expected.toList() + byCategory.values.flatMap { it.counts() }).joinToString(",")
+        errors.toList() + expected.toList() + byCategory.values.flatMap { it.counts() } +
+        byVariant.values.flatMap { it.counts() }).joinToString(",")
 
     companion object {
         const val GATE_CER = 0.10
@@ -88,7 +96,10 @@ class TestRun {
         fun decode(s: String?): TestRun? {
             val v = s?.split(',')?.map { it.toIntOrNull() ?: return null } ?: return null
             val n = CharClass.entries.size
-            if (v.size != 4 + 2 * n + Prompts.Category.entries.size * Accuracy.COUNTS) return null
+            val base = 4 + 2 * n + Prompts.Category.entries.size * Accuracy.COUNTS
+            // Runs saved before variants existed stop at [base]; their variants start empty.
+            val hasVariants = v.size == base + Variant.entries.size * Accuracy.COUNTS
+            if (v.size != base && !hasVariants) return null
             if (v.any { it < 0 } || v[0] != Prompts.VERSION || v[1] > Prompts.all.size || v[3] > 1) return null
             val r = TestRun()
             r.index = v[1]
@@ -100,6 +111,10 @@ class TestRun {
             }
             r.byCategory.values.forEachIndexed { i, a ->
                 val at = 4 + 2 * n + i * Accuracy.COUNTS
+                a.restore(v.subList(at, at + Accuracy.COUNTS))
+            }
+            if (hasVariants) r.byVariant.values.forEachIndexed { i, a ->
+                val at = base + i * Accuracy.COUNTS
                 a.restore(v.subList(at, at + Accuracy.COUNTS))
             }
             // Every finished prompt was either scored or skipped.

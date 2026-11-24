@@ -10,6 +10,8 @@ import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognition
@@ -18,6 +20,7 @@ import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognitionModel
 import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognizer
 import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.recognition.RecognitionContext
+import com.google.mlkit.vision.digitalink.common.RecognitionResult
 import com.google.mlkit.vision.digitalink.recognition.WritingArea
 
 /** P0.4 spike: write the prompt, recognise on device, measure error. Ink and text are never logged or saved. */
@@ -105,15 +108,21 @@ class MainActivity : Activity() {
         val r = recognizer ?: return
         val at = revision
         val start = System.nanoTime()
-        // Empty pre-context: the prompt must not help the recognizer.
-        val ctx = RecognitionContext.builder().setPreContext("")
-            .setWritingArea(WritingArea(ink.width.toFloat(), ink.height.toFloat())).build()
+        val strokes = ink.buildInk()
         busy = true
         refresh()
-        r.recognize(ink.buildInk(), ctx)
-            .addOnSuccessListener(this) { res ->
+        val gate = r.recognize(strokes, context(ink.height.toFloat()))
+            .addOnSuccessListener(this) { lastMs = (System.nanoTime() - start) / 1_000_000 }
+        // First attempts also try the variants on the same ink. All or nothing keeps them paired.
+        val variants: Map<Variant, Task<RecognitionResult>> = if (run.done || run.scored) emptyMap() else mapOf(
+            Variant.FITTED_AREA to r.recognize(strokes, context(ink.inkHeight())),
+            Variant.NO_CONTEXT to r.recognize(strokes),
+        )
+        Tasks.whenAll(variants.values + gate)
+            .addOnSuccessListener(this) {
                 busy = false
-                if (at == revision) onResult(res.candidates.map { it.text }, start) // else: ink changed meanwhile
+                // Ignore the results if the ink changed meanwhile.
+                if (at == revision) onResult(texts(gate), variants.mapValues { texts(it.value) })
                 refresh()
             }
             .addOnFailureListener(this) {
@@ -123,11 +132,16 @@ class MainActivity : Activity() {
             }
     }
 
-    private fun onResult(candidates: List<String>, startNs: Long) {
-        lastMs = (System.nanoTime() - startNs) / 1_000_000
+    /** Empty pre-context: the prompt must not help the recognizer. */
+    private fun context(areaHeight: Float) = RecognitionContext.builder().setPreContext("")
+        .setWritingArea(WritingArea(ink.width.toFloat(), areaHeight)).build()
+
+    private fun texts(t: Task<RecognitionResult>) = t.result.candidates.map { it.text }
+
+    private fun onResult(candidates: List<String>, variants: Map<Variant, List<String>>) {
         text = candidates.firstOrNull().orEmpty()
         result.text = text.ifEmpty { "(nothing recognised)" }
-        run.score(candidates) // first attempt only, so rewriting until it works does not improve the score
+        run.score(candidates, variants) // first attempt only, so rewriting until it works does not improve the score
         save()
     }
 
