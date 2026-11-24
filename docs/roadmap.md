@@ -22,7 +22,14 @@ Source: [architecture.md §17](architecture.md#17-project-organization-and-roadm
 - [x] Replay a P0.2 log through the injector (`pen_diag replay`). Built; waiting on a tablet log.
 - [ ] Go/no-go endurance: `pen_diag soak --minutes 30 --log soak.csv` (built and unit-tested; not run yet. Calibration has failed since 20 Nov, cause unknown. See D7.)
 
-**P0 gate:** at least two target apps accept meaningful pen input (pressure, clean down/up), with no unexplained input hooks.
+### P0.4 Nepali handwriting recognition (`android/nepaliink/`)
+Added 24 Nov 2026: TabInk keeps its Windows goal and adds Nepali handwriting to text. Sending *text* to Windows may not need pen injection, so this track doesn't depend on D7.
+- [x] Check ML Kit `ne-NP` support and terms ([findings](../android/nepaliink/README.md))
+- [x] Build the write/recognise/score app (builds and unit tests pass; not run on a tablet yet)
+- [ ] Run the 100-prompt test on the tablet, plus an airplane-mode check
+- [ ] **Gate:** CER under 10%, none skipped. Only then design text delivery to Windows (D9).
+
+**P0 gate (pen-display track):** at least two target apps accept meaningful pen input (pressure, clean down/up), with no unexplained input hooks.
 
 **Go/no-go (architecture.md end):** synthetic pen draws 30 consecutive minutes of small math notation without systematic loss, offsets, or broken pen-up. If not, fall back to existing apps or treat a signed HID driver as a separate research task.
 
@@ -53,3 +60,5 @@ AOA USB without developer mode, WebRTC/QUIC, browser extension, WinTab/virtual H
 | D5 | Windows build system | CMake + vcpkg/NuGet, or an MSBuild `.sln` | |
 | D6 | GPU for capture + encode | NVIDIA NVENC or Intel Quick Sync | This laptop is hybrid (Intel UHD + RTX 5060). The WGC texture and MF encoder must share a D3D11 adapter. |
 | D7 | Multi-monitor pen reach | (a) Only target windows on the pen-mapped display; tell the user to move the window. (b) Ask the user to remap pen input in Tablet PC Settings. (c) Virtual HID digitizer (kernel driver, v2+). | **P0.3 finding:** the synthetic pen is bound to one display (the built-in panel here) and uses its local pixels. Off-display points are silently ignored. This changes architecture.md §5/§6 "virtual-desktop pixels". Leaning (a) for MVP, measured at runtime as `pen_diag` does. Check whether a PC without a built-in digitizer maps to the primary display. **20 and 24 Nov:** delivery stopped: hover no longer moves the cursor though injection returns success. Cause unknown; it survives a reboot and happens without EL Display Hub running ([finding 4](../windows/tests/pen-diagnostics/README.md#findings-that-affect-the-design)). The host must calibrate on start, display change and resume. **Blocks the P0 gate until understood.** |
+| D8 | Nepali recognition engine | ML Kit `ne-NP` or a self-trained model | ML Kit is proprietary and sends usage metrics (not ink or text) to Google. Decide after P0.4. |
+| D9 | Text delivery to Windows | TabInk's own TLS channel to the PC clipboard, or typed Unicode input | After the P0.4 gate. Same rules as pen input: paired device, user gesture, verified target, nothing logged. |

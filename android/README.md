@@ -21,6 +21,7 @@ Hot-path rules: no per-sample allocations if profiling shows them; no work on th
 | Module | Status |
 |---|---|
 | [`penlogger/`](penlogger/) | **P0.2 spike.** S Pen sample logger with live stats and CSV export. Throwaway. |
+| [`nepaliink/`](nepaliink/) | **P0.4 spike.** Nepali handwriting recognition test (ML Kit). Throwaway. |
 | `app/` | The real client. Not started; it begins in the MVP. |
 
 Build everything in Docker from the repo root:
