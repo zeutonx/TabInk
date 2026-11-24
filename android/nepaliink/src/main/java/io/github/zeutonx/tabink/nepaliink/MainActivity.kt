@@ -1,6 +1,7 @@
 package io.github.zeutonx.tabink.nepaliink
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Color
@@ -19,7 +20,7 @@ import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognizerOption
 import com.google.mlkit.vision.digitalink.recognition.RecognitionContext
 import com.google.mlkit.vision.digitalink.recognition.WritingArea
 
-/** P0.4 spike: write the prompt, recognise on device, measure error. Nothing is logged or saved. */
+/** P0.4 spike: write the prompt, recognise on device, measure error. Ink and text are never logged or saved. */
 class MainActivity : Activity() {
     private lateinit var ink: InkView
     private lateinit var prompt: TextView
@@ -32,10 +33,7 @@ class MainActivity : Activity() {
 
     private lateinit var model: DigitalInkRecognitionModel
     private var recognizer: DigitalInkRecognizer? = null
-    private val accuracy = Accuracy()
-    private var index = 0
-    private var skipped = 0
-    private var scored = false
+    private var run = TestRun()
     private var busy = false
     private var revision = 0
     private var text = ""
@@ -43,6 +41,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        run = TestRun.decode(prefs().getString(KEY_RUN, null)) ?: TestRun()
         model = DigitalInkRecognitionModel.builder(
             checkNotNull(DigitalInkRecognitionModelIdentifier.fromLanguageTag("ne-NP")),
         ).build()
@@ -51,17 +50,21 @@ class MainActivity : Activity() {
         result = label(30f)
         stats = label(14f)
         recognize = button("Recognize") { recognizeInk() }
-        copy = button("Copy text") { copyText() }
+        copy = button("Copy text") { copy("Nepali text", text) }
         next = button("Next") { nextPrompt() }
         download = button("Download model (~20 MB)") { downloadModel() }
         ink = InkView(this).apply { onInkChanged = { revision++; refresh() } }
         val bar = LinearLayout(this).apply {
-            listOf(recognize, button("Clear") { ink.clear() }, next, copy, download).forEach { addView(it) }
+            listOf(recognize, button("Clear") { ink.clear() }, next, copy).forEach { addView(it) }
+        }
+        val bar2 = LinearLayout(this).apply {
+            listOf(download, button("Copy report") { copy("Nepali ink report", run.report()) },
+                button("Restart test") { confirmRestart() }).forEach { addView(it) }
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(230, 230, 225))
-            listOf(bar, prompt, stats).forEach { addView(it) }
+            listOf(bar, bar2, prompt, stats).forEach { addView(it) }
             addView(ink, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(260)))
             addView(result)
             setOnApplyWindowInsetsListener { v, insets ->
@@ -124,33 +127,45 @@ class MainActivity : Activity() {
         lastMs = (System.nanoTime() - startNs) / 1_000_000
         text = candidates.firstOrNull().orEmpty()
         result.text = text.ifEmpty { "(nothing recognised)" }
-        // First attempt only, so rewriting until it works does not improve the score.
-        if (!scored && index < Prompts.all.size) {
-            accuracy.add(Prompts.all[index], candidates)
-            scored = true
-        }
+        run.score(candidates) // first attempt only, so rewriting until it works does not improve the score
+        save()
     }
 
     private fun nextPrompt() {
-        if (!scored) skipped++
-        index++
-        scored = false
+        run.next()
+        save()
         text = ""
         result.text = ""
         ink.clear()
     }
 
-    private fun copyText() {
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Nepali text", text))
+    private fun confirmRestart() {
+        AlertDialog.Builder(this).setMessage("Delete all scores and start from prompt 1?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Restart") { _, _ ->
+                run = TestRun()
+                save()
+                text = ""
+                result.text = ""
+                ink.clear()
+            }.show()
     }
+
+    private fun copy(label: String, value: String) {
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(label, value))
+    }
+
+    private fun prefs() = getSharedPreferences("run", MODE_PRIVATE)
+
+    /** Counts only (see TestRun.encode). */
+    private fun save() = prefs().edit().putString(KEY_RUN, run.encode()).apply()
 
     private fun refresh() {
         val total = Prompts.all.size
-        prompt.text = if (index < total) "${index + 1}/$total   ${Prompts.all[index]}" else "Done. Write anything."
-        stats.text = "set v${Prompts.VERSION}  ${accuracy.summary()}  skipped $skipped" +
-            if (lastMs >= 0) "  last $lastMs ms" else ""
+        prompt.text = if (run.done) "Done. Write anything." else "${run.index + 1}/$total   ${Prompts.all[run.index]}"
+        stats.text = run.report() + if (lastMs >= 0) "\nlast recognition $lastMs ms" else ""
         recognize.isEnabled = recognizer != null && !busy && !ink.isEmpty && !ink.isWriting
-        next.isEnabled = !busy && index < total
+        next.isEnabled = !busy && !run.done
         copy.isEnabled = text.isNotEmpty()
     }
 
@@ -165,5 +180,9 @@ class MainActivity : Activity() {
     private fun button(t: String, onClick: () -> Unit) = Button(this).apply {
         text = t
         setOnClickListener { onClick() }
+    }
+
+    private companion object {
+        const val KEY_RUN = "run"
     }
 }

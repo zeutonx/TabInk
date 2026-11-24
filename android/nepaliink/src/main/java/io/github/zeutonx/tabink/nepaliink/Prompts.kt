@@ -28,5 +28,15 @@ object Prompts {
         "९८४१", "३६५ दिन", "कक्षा १२", "७० किलो", "वि सं २०८०",
     )
 
-    val all: List<String> = WORDS.trim().split(Regex("\\s+")) + LINES + NUMBERS
+    enum class Category { WORDS, LINES, NUMBERS }
+
+    private val words = WORDS.trim().split(Regex("\\s+"))
+
+    val all: List<String> = words + LINES + NUMBERS
+
+    fun categoryOf(index: Int) = when {
+        index < words.size -> Category.WORDS
+        index < words.size + LINES.size -> Category.LINES
+        else -> Category.NUMBERS
+    }
 }

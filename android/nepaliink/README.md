@@ -29,12 +29,21 @@ adb install -r android/nepaliink/build/outputs/apk/debug/nepaliink-debug.apk
 
 1. Tap **Download model** once, while online.
 2. Write the prompt with the S Pen on one line (fingers and palm are ignored), tap **Recognize**, then **Next**. Don't practise: only the first attempt counts.
-3. After all 100 prompts, copy the stats line into the table below. Stay in the app: scores aren't saved.
+3. After all 100 prompts, tap **Copy report** and fill in the table below. You can close the app and continue later; **Restart test** erases the scores.
 4. Turn on airplane mode, restart the app and recognise one word.
 
-Nothing is logged or saved. **Copy text** uses the Android clipboard, and other apps can sync that.
+Ink and recognised text are never logged or saved; only score counts and progress are stored. **Copy text** uses the Android clipboard, and other apps can sync that.
 
 CER counts Unicode code points after NFC, without ZWJ/ZWNJ, over all scored prompts. Skipped prompts are shown but not scored, so report them.
+
+The report also splits scores by words, lines and numbers, and errors by character type as `edits/expected`. An inserted character counts under its own type, so that ratio can exceed 100%. Where several alignments are equally short, the split is one of them; the overall CER is not affected.
+
+| Mostly errors in | Try next |
+|---|---|
+| `matra`, `sign` | Larger marks, or a writing-area height closer to your line height |
+| `halant`, `consonant` | Check conjuncts; compare `ne-NP` with `ne` |
+| `space` | Write word by word, with pre-context |
+| `digit` only | Number input may need its own mode |
 
 **Gate:** CER under 10% on all 100 prompts with none skipped. One writer is a feasibility signal, not a general accuracy claim.
 

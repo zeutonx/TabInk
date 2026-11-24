@@ -32,6 +32,16 @@ class Accuracy {
         words += wantWords.size
     }
 
+    fun merge(o: Accuracy) = restore(counts().zip(o.counts()) { a, b -> a + b })
+
+    fun counts() = listOf(prompts, exact, inCandidates, charEdits, chars, wordEdits, words)
+
+    fun restore(c: List<Int>) {
+        require(c.size == COUNTS)
+        prompts = c[0]; exact = c[1]; inCandidates = c[2]
+        charEdits = c[3]; chars = c[4]; wordEdits = c[5]; words = c[6]
+    }
+
     fun summary(): String {
         fun pct(v: Double?) = if (v == null) "-" else "%.1f%%".format(Locale.ROOT, v * 100)
         return "scored $prompts  CER ${pct(cer)} ($charEdits/$chars)  WER ${pct(wer)} ($wordEdits/$words)  " +
@@ -39,13 +49,15 @@ class Accuracy {
     }
 
     companion object {
+        const val COUNTS = 7
+
         /** NFC, no ZWJ/ZWNJ (invisible, not handwritten), collapsed spaces. */
         fun normalize(s: String): String =
             Normalizer.normalize(s, Normalizer.Form.NFC)
-                .replace("‌", "").replace("‍", "")
+                .replace("\u200c", "").replace("\u200d", "")
                 .replace(Regex("\\s+"), " ").trim()
 
-        private fun codePoints(s: String) = s.codePoints().toArray().toList()
+        fun codePoints(s: String): List<Int> = s.codePoints().toArray().toList()
         private fun wordsOf(s: String) = s.split(' ').filter { it.isNotEmpty() }
 
         fun <E> editDistance(a: List<E>, b: List<E>): Int {
