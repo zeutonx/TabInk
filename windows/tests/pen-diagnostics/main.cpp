@@ -405,8 +405,7 @@ PenSpace Calibrate(PenInjector& inj) {
         std::printf("Pen mapping calibration FAILED: %s\n", s.error.c_str());
         std::printf("Windows' pointer-device mapping right now (the synthetic pen is usually the last pen listed):\n");
         PrintPointerDevices();
-        std::printf("If the synthetic pen shows 'monitor (none)', Windows has no display for it: run Control Panel >\n"
-                    "Tablet PC Settings > Setup > Pen input, and pick the screen to draw on. Nothing was drawn.\n");
+        std::printf("Only hover was injected, no contact. Cause not established; see finding 4 in the README.\n");
         return s;
     }
     std::printf("Pen mapping: synthetic pen reaches %s (%ld,%ld %ldx%ld); device (0,0) = screen (%.0f,%.0f), scale %.3f x %.3f\n",
@@ -720,10 +719,25 @@ int CmdProbe() {
     Sleep(100);
     GetCursorPos(&after);
     std::printf("pen hover: cursor %ld,%ld -> %ld,%ld (injected around %ld,%ld)\n", before.x, before.y, after.x, after.y, c.x + 19, c.y);
-    inj->Down({c.x, c.y + 20, 600});
-    for (int i = 1; i < 20; ++i) { inj->Move({c.x + i * 3, c.y + 20, 600}); Sleep(5); }
-    inj->Up({c.x + 60, c.y + 20});
     inj->EndAll();
+    // Contact only when we know where it lands. With a broken mapping Windows can put the pen
+    // anywhere, so an unguarded stroke could draw in, or click, someone else's window.
+    const PenSpace space = CalibratePenSpace(*inj);
+    if (space.valid && space.Reaches(rc)) {
+        Guard guard{target.hwnd(), /*requireForeground=*/false, {}};
+        for (int i = 0; i < 20; ++i) {
+            const POINT s{c.x + i * 3, c.y + 20};
+            if (!guard.Ok(s)) { std::printf("contact test stopped: %s\n", guard.reason.c_str()); break; }
+            const POINT d = space.ToDevice(s);
+            const PenPoint pt{d.x, d.y, 600};
+            if (i == 0) inj->Down(pt); else inj->Move(pt);
+            if (i == 19) inj->Up(pt);
+            Sleep(5);
+        }
+        inj->EndAll();
+    } else {
+        std::printf("contact test skipped: %s\n", space.valid ? "probe window is not on the pen's display" : space.error.c_str());
+    }
     Sleep(200);
     auto r1 = target.raw();
     std::printf("after pen: pointer msgs %llu, mouse msgs %llu, ok frames %llu, failed %llu\n",

@@ -71,6 +71,16 @@ Run each step with **Unbuffered: off**, then repeat steps 1–3 with it **on**. 
 7. **Eraser**: check whether the S Pen reports `eraser` in `TOOLS`. The S10 FE pen has no eraser end, so expect no.
 8. Record one 2-minute session of normal math writing with **Record** and pull the CSV.
 
+## Analyse a recording
+
+Computes the results-table rows over a whole CSV (the panel keeps only the last 4096 intervals). Prints statistics only, never coordinates. Python 3.12, no dependencies:
+
+```bash
+py -3.12 android/penlogger/tools/analyze_log.py p0-logs/pen-YYYYMMDD-HHMMSS.csv
+```
+
+Tests: `py -3.12 -m unittest discover -s android/penlogger/tools`
+
 ## Results
 
 Fill this in after running the protocol. It feeds decisions in [architecture.md](../../docs/architecture.md) §§2, 4, 8 and 9.
